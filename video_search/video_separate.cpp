@@ -114,6 +114,29 @@ public:
         }
     }
 
+    int videoCaptureSeek(VideoCapture *video_capture, int dst_idx)
+    {
+        Mat skip_img;
+        int cur_idx = video_capture->get(CAP_PROP_POS_FRAMES);
+        if ((dst_idx - cur_idx > 0) && (dst_idx - cur_idx < 20))
+        {
+            // read one by one, is faster then short seek
+            for (;cur_idx<dst_idx; cur_idx++)
+            {
+                if (!video_capture->read(skip_img))
+                {
+                    cout << "Frame skip fail!" << endl;
+                    return 0;
+                }
+            }
+        }
+        else
+        {
+            video_capture->set(CAP_PROP_POS_FRAMES, dst_idx);
+            cur_idx = video_capture->get(CAP_PROP_POS_FRAMES);
+        }
+        return cur_idx;
+    }
 
     void processVideo()
     {
@@ -148,8 +171,9 @@ public:
             if (mFrameRange[0] && (frame_idx <= mFrameRange[0]))
             {
                 //开始帧pos
-                video_capture->set(CAP_PROP_POS_FRAMES, frame_idx);
-                frame_idx = video_capture->get(CAP_PROP_POS_FRAMES);
+                frame_idx = videoCaptureSeek(video_capture, mFrameRange[0]);
+                if (!frame_idx)
+                    break;
                 new_seq = 1;
                 continue;
             }
@@ -242,7 +266,7 @@ public:
             
             cout << frame_idx << " seq: " << seq_idx <<" good_matches: " << good_matches.size() << " / " << matches.size() << " min_dist:" << min_dist << endl;
 
-            if (good_matches.size() < matches.size()*3/10) //20% good match
+            if (good_matches.size() < matches.size()*15/100) //20% good match
             {
                 int timems = video_capture->get(CAP_PROP_POS_MSEC);
 
@@ -251,12 +275,12 @@ public:
                 fflush(fp_seq_idx);
                 seq_idx++;
                 
-//                Mat img_goodmatch;
-//                drawMatches ( last_img, last_keypoints, next_img, keypoints, good_matches, img_goodmatch );
-//                putText(img_goodmatch, "Seq " + to_string(seq_idx), Point(0,100), 2, 1, Scalar(0, 0, 255));
-//                destroyAllWindows();
-//                imshow ( "goodmatch", img_goodmatch );
-//                waitKey(1);
+                Mat img_goodmatch;
+                drawMatches ( last_img, last_keypoints, next_img, keypoints, good_matches, img_goodmatch );
+                putText(img_goodmatch, "Seq " + to_string(seq_idx), Point(0,100), 2, 1, Scalar(0, 0, 255));
+                destroyAllWindows();
+                imshow ( "goodmatch", img_goodmatch );
+                waitKey();
             }
             if (0)
             {
@@ -266,7 +290,7 @@ public:
                 putText(img_goodmatch, "Seq " + to_string(seq_idx), Point(0,100), 2, 1, Scalar(0, 0, 255));
                 destroyAllWindows();
                 imshow ( "goodmatch", img_goodmatch );
-                waitKey(1);
+                waitKey();
 
 //                drawMatches ( last_img, last_keypoints, next_img, keypoints, null_matches, img_goodmatch );
 //                imshow ( "keypoint", img_goodmatch );
@@ -280,8 +304,8 @@ public:
             // seek逻辑
             if (mFrameInterval > 1)
             {
-                video_capture->set(CAP_PROP_POS_FRAMES, frame_idx + mFrameInterval);
-                frame_idx = video_capture->get(CAP_PROP_POS_FRAMES);
+                // < 10时，seek比往后度还慢
+                frame_idx = videoCaptureSeek(video_capture, frame_idx + mFrameInterval);
             }
             
             //提前结束帧pos
@@ -309,7 +333,7 @@ int video_separate(const char *src_video, const char *dst_dir, const char *info_
 //    try {
         if (!mRebuild)
         {
-            separator.setFrameRange(0, 0, 1);
+            separator.setFrameRange(0, 0, 5);
             cout << endl << "1. 短视频分析中...." << endl;
             separator.setRoiRegion(0, 370, 720, 360);
             separator.setWindowSize(300);
